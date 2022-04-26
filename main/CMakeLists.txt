@@ -7,7 +7,7 @@ add_executable(${PROJECT_NAME}
 pico_add_extra_outputs(${PROJECT_NAME})
 
 # Link to pico_stdlib (gpio, time, etc. functions)
-target_link_libraries(${PROJECT_NAME} pico_stdlib hardware_gpio hardware_clocks hardware_pwm)
+target_link_libraries(${PROJECT_NAME} pico_stdlib hardware_gpio hardware_clocks hardware_pwm hardware_adc)
 
 # Enable usb output, disable uart output
 # pico_enable_stdio_usb(${PROJECT_NAME} 1)

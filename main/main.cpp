@@ -3,6 +3,7 @@
 #include "hardware/gpio.h"
 #include "hardware/clocks.h"
 #include "hardware/pwm.h"
+#include "hardware/adc.h"
 
 void confPWM(int pin, float f_pwm, float duty) {
 	
@@ -24,11 +25,42 @@ void confPWM(int pin, float f_pwm, float duty) {
 	pwm_set_enabled(slice_num, true); // let's go!
 }
 
+float precToFreq(float perc) {
+	//float cMaj[] = { 0.0f, 0.0f, 0.0f, 0.0f, 261.63, 293.66, 329.63, 349.23, 392.00, 440.00, 493.88, 523.25 };
+	float cMaj[] = { 0.0f, 0.0f, 0.0f, 0.0f, 523.25f, 587.33f, 659.25f, 698.46f, 783.99f, 880.00f, 987.77f, 1046.50f };
+	int idx = (int)(perc*(8.0f+4.0f));
+	return cMaj[idx];
+}
+
 int main() 
 {
 	confPWM(0, 261.63f, 0.50f);
 	confPWM(2, 329.63f, 0.50f);
 	confPWM(4, 392.00f, 0.50f);
-	for(;;);
+	
+    adc_init();
+    adc_gpio_init(26); // Make sure GPIO is high-impedance, no pullups etc
+    adc_select_input(0); // Select ADC input 0 (GPIO26)
+
+    while (1) {
+		
+		//avg a bunch of adc
+		float avgVal = 0.0f;
+		for(int i = 0; i < 100; i++) {
+			float adcVal = ((float)adc_read()) / 4095.0f;
+			avgVal += adcVal;
+		}
+		avgVal /= 100.0f;
+		float freq  = precToFreq(avgVal);
+		
+		//play note
+		if(freq < 261.0f) { 
+			confPWM(0, 261.63f, 0.0f);
+		} else { 
+			confPWM(0, freq, 0.50f);
+		}
+        //sleep_ms(100);
+    }
+	
 	return 0;
 }
