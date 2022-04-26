@@ -1,6 +1,8 @@
 # Tell CMake where to find the executable source file
 add_executable(${PROJECT_NAME} 
     main.cpp
+	MidiNote.cpp
+	Scale.cpp
 )
 
 # Create map/bin/hex/uf2 files
