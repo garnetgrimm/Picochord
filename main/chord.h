@@ -2,7 +2,7 @@
 
 #include "pico/stdlib.h"
 
-enum ChordType { BLANK, MAJOR, MINOR, SEVEN, MAJSEV, MINSEV, AUGMEN, DIMIN };
+enum ChordType { BLANK, SEVEN, MINOR, MINSEV, MAJOR, MAJSEV, DIMIN, AUGMEN };
 
 struct Chord {
 	uint8_t notes[3];
