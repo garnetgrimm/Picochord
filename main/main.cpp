@@ -21,8 +21,11 @@ const uint8_t kR1Pin = 1;	//keypad row one pin
 const uint8_t kR2Pin = 3;	//keypad row two pin
 const uint8_t kR3Pin = 5;	//keypad row three pin
 
-const float keypadLoadHz = 2000.0f;
-const float keypadClockHz = keypadClockHz * 16.0f;
+const uint8_t rows = 3;
+const uint8_t columns = 12;
+
+const float keypadLoadHz = 60.0f;
+const float keypadClockHz = keypadClockHz * (float)columns;
 const float strumLoadHz = 500.0f;
 
 Chord activeChord = NoChord();
@@ -68,14 +71,14 @@ uint8_t get_active_keypad_column() {
 	uint16_t slice_num = pwm_gpio_to_slice_num(kLPin);
 	uint32_t top =  (uint32_t)(1000000.0f/keypadLoadHz - 1.0f);
 	uint32_t count = pwm_get_counter(slice_num);
-	return 16*(count/top);
+	return (16*count)/top;
 }
  
 Chord keypad_to_chord() {
 	//if multiple notes are being pressed, pick the highest note
 	int max_note = 0;
-	for(int row = 0; row < 3; row++) {
-		for(int col = 0; col < 16; col++) {
+	for(int row = 0; row < rows; row++) {
+		for(int col = 0; col < columns; col++) {
 			if(keypad[row] & (1 << col) && col > max_note) max_note = col;
 		}
 	}
@@ -85,16 +88,30 @@ Chord keypad_to_chord() {
 	int chordType = 0;
 	
 	//determine chord pressed for active note
-	for(int row = 0; row < 3; row++) {
+	for(int row = 0; row < rows; row++) {
 		if(keypad[row] & (1 << max_note)) {
-			chordType |= (1<<row);
+			chordType |= (1 << row);
 		}
 	}
 	
 	return Chord::makeChord(root, static_cast<ChordType>(chordType));
 }
- 
+
+void printKeypad() {
+	for(int row = 0; row < rows; row++) {
+		for(int col = 0; col < columns; col++) {
+			if(keypad[row] & (1 << col)) {
+				printf("1");
+			} else {
+				printf("0");
+			}
+		}
+		printf("\r\n");
+	}
+}
+
 void row_event(uint gpio, uint32_t events) {
+	
     uint8_t col = 0;
 	uint8_t row = 0;
 	switch(gpio) {
@@ -124,10 +141,15 @@ void row_event(uint gpio, uint32_t events) {
 	confPWM(o1Pin, midiFreq(activeChord[0]), 0.50f, -1.0f);
 	confPWM(o2Pin, midiFreq(activeChord[1]), 0.50f, -1.0f);
 	confPWM(o3Pin, midiFreq(activeChord[2]), 0.50f, -1.0f);
+	
+	printf("\033[2J");	
+	printf("chord %d\r\n", activeChord.type);
+	printKeypad();
 }
 
 int main() 
 {
+	stdio_init_all();
 	
 	//control signals
 	confPWM(sLPin, strumLoadHz, 0.25f, 0.0f);
@@ -140,5 +162,7 @@ int main()
 	gpio_set_irq_enabled_with_callback(3, GPIO_IRQ_EDGE_RISE | GPIO_IRQ_EDGE_FALL, true, &row_event);
 	gpio_set_irq_enabled_with_callback(5, GPIO_IRQ_EDGE_RISE | GPIO_IRQ_EDGE_FALL, true, &row_event);
 	
-	while(1) {};
+	while (true) {
+		//sleep_ms(1000);
+    }
 }

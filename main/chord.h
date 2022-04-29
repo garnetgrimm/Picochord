@@ -6,6 +6,7 @@ enum ChordType { BLANK, SEVEN, MINOR, MINSEV, MAJOR, MAJSEV, DIMIN, AUGMEN };
 
 struct Chord {
 	uint8_t notes[3];
+	ChordType type;
 	uint8_t operator [](int i) const { return notes[i]; }
 	uint8_t & operator [](int i) { return notes[i]; }
 	static Chord makeChord(int root, ChordType type);
