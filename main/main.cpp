@@ -7,6 +7,7 @@
 #include "hardware/adc.h"
 
 #include "chord.h"
+#include "keypad.h"
 
 //all pwm pins with different frequencys or phase offset need to be one pin apart
 const uint8_t o1Pin = 0; 	//oscillator one pin
@@ -21,24 +22,16 @@ const uint8_t kR1Pin = 5;	//keypad row one pin
 const uint8_t kR2Pin = 7;	//keypad row two pin
 const uint8_t kR3Pin = 9;	//keypad row three pin
 
-const uint8_t rows = 3;
-const uint8_t columns = 12;
+uint8_t current_col = 0;
 
 const float keypadLoadHz = 60.0f;
-const float keypadClockHz = keypadClockHz * (float)columns;
+const float keypadClockHz = keypadClockHz * (float)cols;
 const float strumLoadHz = 500.0f;
 
 Chord activeChord = NoChord();
 
-//represent each button with 1 bit (12 buttons so last 4 bits unused)
-// 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 
-// 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 
-// 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 
-uint16_t keypad[3];
-uint8_t current_col = 0;
-
-				    //Db  Ab  Eb  Bb  F   C   G   D   A   E   B   F#
-uint8_t noteMap[] = { 49, 56, 51, 58, 53, 48, 55, 50, 57, 52, 59, 54 };
+Keypad activePad;
+Keypad finalPad;
 
 void confPWM(int pin, float f_pwm, float duty, float phase) {
 	
@@ -65,59 +58,15 @@ void confPWM(int pin, float f_pwm, float duty, float phase) {
 float midiFreq(int midiNum) {
 	return 440.0f*powf(2.0f, ((float)midiNum - 69.0f) / 12.0f);
 }
- 
-Chord keypad_to_chord() {
-	//if multiple notes are being pressed, pick the highest note
-	int max_note = 0;
-	for(int row = 0; row < rows; row++) {
-		for(int col = 0; col < columns; col++) {
-			if(keypad[row] & (1 << col) && col > max_note) max_note = col;
-		}
-	}
-	
-	//get midi from note pressed
-	int root = noteMap[max_note];
-	int chordType = 0;
-	
-	//determine chord pressed for active note
-	for(int row = 0; row < rows; row++) {
-		if(keypad[row] & (1 << max_note)) {
-			chordType |= (1 << row);
-		}
-	}
-	
-	return Chord::makeChord(root, static_cast<ChordType>(chordType));
-}
-
-void printKeypad() {
-	for(int row = 0; row < rows; row++) {
-		for(int col = 0; col < columns; col++) {
-			if(keypad[row] & (1 << col)) {
-				printf("1");
-			} else {
-				printf("0");
-			}
-		}
-		printf("\r\n");
-	}
-}
-
-void set_keypad(uint8_t row, uint8_t col, bool stat) {
-	if(stat) {
-		keypad[row] |= (1 << col);
-	} else {
-		keypad[row] &= ~(1 << col);
-	}
-}
 
 bool tick_keypad(struct repeating_timer *t) {
 	
 	bool clkStat = gpio_get_out_level(kCLKPin);	
 	
 	if(clkStat) {
-		set_keypad(0, current_col, gpio_get(kR1Pin));
-		set_keypad(1, current_col, gpio_get(kR2Pin));
-		set_keypad(2, current_col, gpio_get(kR3Pin));
+		activePad.set_keypad(0, current_col, gpio_get(kR1Pin));
+		activePad.set_keypad(1, current_col, gpio_get(kR2Pin));
+		activePad.set_keypad(2, current_col, gpio_get(kR3Pin));
 		current_col++;
 		
 		gpio_put(kLOADPin, false);
@@ -125,11 +74,13 @@ bool tick_keypad(struct repeating_timer *t) {
 	
 	gpio_put(kCLKPin, !clkStat);
 	
-	if(current_col > columns) {
+	if(current_col > cols) {
 		current_col = 0;
 		gpio_put(kLOADPin, true);
 		
-		activeChord = keypad_to_chord();
+		finalPad.update(activePad);
+		
+		activeChord = finalPad.to_chord();
 	
 		//set oscillators
 		confPWM(o1Pin, midiFreq(activeChord[0]), 0.50f, -1.0f);
@@ -137,8 +88,8 @@ bool tick_keypad(struct repeating_timer *t) {
 		confPWM(o3Pin, midiFreq(activeChord[2]), 0.50f, -1.0f);	
 		
 		printf("\033[2J");	
-		printf("chord %d\r\n", activeChord.type);
-		printKeypad();
+		printf("%d %d\r\n", activeChord.root, activeChord.type);
+		finalPad.print();
 	}
 	
 	return true;

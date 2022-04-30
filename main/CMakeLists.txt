@@ -2,6 +2,7 @@
 add_executable(${PROJECT_NAME} 
     main.cpp
 	chord.cpp
+	keypad.cpp
 )
 
 # Create map/bin/hex/uf2 files

@@ -1,5 +1,15 @@
 #include "chord.h"
 
+Chord::Chord() {
+	this->type = BLANK;
+	this->root = 0;
+}
+
+Chord::Chord(int root, ChordType type) {
+	this->type = type;
+	this->root = root;
+}
+
 Chord Chord::makeChord(int root, ChordType type) {
 	switch(type) {
 		case MAJOR:
@@ -22,65 +32,57 @@ Chord Chord::makeChord(int root, ChordType type) {
 }
 
 //000
-NoChord::NoChord() {
+NoChord::NoChord() : Chord() {
 	notes[0] = 0;
 	notes[1] = 0;
 	notes[2] = 0;
-	type = BLANK;
 }
 
 //001
-SevChord::SevChord(int root) {
+SevChord::SevChord(int root) : Chord(root, BLANK) {
 	notes[0] = root + 0;
 	notes[1] = root + 4;
 	notes[2] = root + 9;
-	type = SEVEN;
 }
 
 //010
-MinChord::MinChord(int root) {
+MinChord::MinChord(int root) : Chord(root, MINOR) {
 	notes[0] = root + 0;
 	notes[1] = root + 3;
 	notes[2] = root + 7;
-	type = MINOR;
 }
 
 //011
-MinSevChord::MinSevChord(int root) {
+MinSevChord::MinSevChord(int root) : Chord(root, MINSEV) {
 	notes[0] = root + 0;
 	notes[1] = root + 3;
 	notes[2] = root + 9;
-	type = MINSEV;
 }
 
 //100
-MajChord::MajChord(int root) {
+MajChord::MajChord(int root) : Chord(root, MAJOR) {
 	notes[0] = root + 0;
 	notes[1] = root + 4;
 	notes[2] = root + 7;
-	type = MAJOR;
 }
 
 //101
-MajSevChord::MajSevChord(int root) {
+MajSevChord::MajSevChord(int root) : Chord(root, MAJSEV) {
 	notes[0] = root + 0;
 	notes[1] = root + 4;
 	notes[2] = root + 10;
-	type = MAJSEV;
 }
 
 //110
-DimChord::DimChord(int root) {
+DimChord::DimChord(int root) : Chord(root, DIMIN) {
 	notes[0] = root + 0;
 	notes[1] = root + 3;
 	notes[2] = root + 6;
-	type = DIMIN;
 }
 
 //111
-AugChord::AugChord(int root) {
+AugChord::AugChord(int root) : Chord(root, AUGMEN) {
 	notes[0] = root + 0;
 	notes[1] = root + 4;
 	notes[2] = root + 8;
-	type = AUGMEN;
 }
