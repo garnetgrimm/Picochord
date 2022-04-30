@@ -12,10 +12,10 @@
 const uint8_t o1Pin = 0; 	//oscillator one pin
 const uint8_t o2Pin = 1; 	//oscillator two pin
 const uint8_t o3Pin = 2; 	//oscillator three pin
-const uint8_t sLPin = 4; 	//strumpad load pin
+const uint8_t sLOADPin = 4; 	//strumpad load pin
 const uint8_t sCLKPin = 6;	//strumpad clock pin
-const uint8_t kLPin = 8;	//keypad load pin
-const uint8_t kCPin = 10;	//keypad clock pin
+const uint8_t kLOADPin = 8;	//keypad load pin
+const uint8_t kCLKPin = 10;	//keypad clock pin
 //use some of the previously skipped pins. They're ok to use, the associated timer is just being utilized.
 const uint8_t kR1Pin = 1;	//keypad row one pin
 const uint8_t kR2Pin = 3;	//keypad row two pin
@@ -35,6 +35,7 @@ Chord activeChord = NoChord();
 // 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 
 // 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 
 uint16_t keypad[3];
+uint8_t current_col = 0;
 
 				    //Db  Ab  Eb  Bb  F   C   G   D   A   E   B   F#
 uint8_t noteMap[] = { 49, 56, 51, 58, 53, 48, 55, 50, 57, 52, 59, 54 };
@@ -63,15 +64,6 @@ void confPWM(int pin, float f_pwm, float duty, float phase) {
 
 float midiFreq(int midiNum) {
 	return 440.0f*powf(2.0f, ((float)midiNum - 69.0f) / 12.0f);
-}
-
-uint8_t get_active_keypad_column() {
-	//the column being checked can be calculated
-	//there is a direct relationship between the timer for the keypad load and the keypad clock
-	uint16_t slice_num = pwm_gpio_to_slice_num(kLPin);
-	uint32_t top =  (uint32_t)(1000000.0f/keypadLoadHz - 1.0f);
-	uint32_t count = pwm_get_counter(slice_num);
-	return (16*count)/top;
 }
  
 Chord keypad_to_chord() {
@@ -110,57 +102,71 @@ void printKeypad() {
 	}
 }
 
-void row_event(uint gpio, uint32_t events) {
-	
-    uint8_t col = 0;
-	uint8_t row = 0;
-	switch(gpio) {
-		case kR1Pin:
-			row = 0;
-			break;
-		case kR2Pin:
-			row = 1;
-			break;
-		case kR3Pin:
-			row = 2;
-			break;
-	}
-	col = get_active_keypad_column();
-	
-	if(events & (1 << 3)) { //edge rise
+void set_keypad(uint8_t row, uint8_t col, bool stat) {
+	if(stat) {
 		keypad[row] |= (1 << col);
-	}
-	
-	if(events & (1 << 2)) { //edge fall
+	} else {
 		keypad[row] &= ~(1 << col);
 	}
+}
+
+bool tick_keypad(struct repeating_timer *t) {
 	
-	activeChord = keypad_to_chord();
+	bool clkStat = gpio_get_out_level(kCLKPin);	
 	
-	//set oscillators
-	confPWM(o1Pin, midiFreq(activeChord[0]), 0.50f, -1.0f);
-	confPWM(o2Pin, midiFreq(activeChord[1]), 0.50f, -1.0f);
-	confPWM(o3Pin, midiFreq(activeChord[2]), 0.50f, -1.0f);
+	if(clkStat) {
+		set_keypad(0, current_col, gpio_get(kR1Pin));
+		set_keypad(1, current_col, gpio_get(kR2Pin));
+		set_keypad(2, current_col, gpio_get(kR3Pin));
+		current_col++;
+		
+		gpio_put(kLOADPin, false);
+	}
 	
-	printf("\033[2J");	
-	printf("chord %d\r\n", activeChord.type);
-	printKeypad();
+	gpio_put(kCLKPin, !clkStat);
+	
+	if(current_col > columns) {
+		current_col = 0;
+		gpio_put(kLOADPin, true);
+		
+		activeChord = keypad_to_chord();
+	
+		//set oscillators
+		confPWM(o1Pin, midiFreq(activeChord[0]), 0.50f, -1.0f);
+		confPWM(o2Pin, midiFreq(activeChord[1]), 0.50f, -1.0f);
+		confPWM(o3Pin, midiFreq(activeChord[2]), 0.50f, -1.0f);	
+		
+		printf("\033[2J");	
+		printf("chord %d\r\n", activeChord.type);
+		printKeypad();
+	}
+	
+	return true;
 }
 
 int main() 
 {
 	stdio_init_all();
 	
-	//control signals
-	confPWM(sLPin, strumLoadHz, 0.25f, 0.0f);
-	confPWM(sCLKPin, strumLoadHz, 0.10f, 180.0f);
-	confPWM(kLPin, keypadLoadHz, 0.05f, 0.0f);
-	confPWM(kCPin, keypadClockHz, 0.5f, 5.0f);
+	//keypad control signals
+	gpio_init(kLOADPin);
+	gpio_init(kCLKPin);
+	gpio_init(kR1Pin);
+	gpio_init(kR2Pin);
+	gpio_init(kR3Pin);
 	
-	//keypress events
-	gpio_set_irq_enabled_with_callback(1, GPIO_IRQ_EDGE_RISE | GPIO_IRQ_EDGE_FALL, true, &row_event);
-	gpio_set_irq_enabled_with_callback(3, GPIO_IRQ_EDGE_RISE | GPIO_IRQ_EDGE_FALL, true, &row_event);
-	gpio_set_irq_enabled_with_callback(5, GPIO_IRQ_EDGE_RISE | GPIO_IRQ_EDGE_FALL, true, &row_event);
+    gpio_set_dir(kLOADPin, GPIO_OUT);
+	gpio_set_dir(kCLKPin,  GPIO_OUT);
+	gpio_set_dir(kR1Pin,   GPIO_IN);
+	gpio_set_dir(kR2Pin,   GPIO_IN);
+	gpio_set_dir(kR3Pin,   GPIO_IN);
+	
+	//strumpad control signals
+	confPWM(sLOADPin, strumLoadHz, 0.25f, 0.0f);
+	confPWM(sCLKPin, strumLoadHz, 0.10f, 180.0f);
+	
+	struct repeating_timer timer;
+	add_repeating_timer_us(-1000, tick_keypad, NULL, &timer);
 	
 	while (true) {
 		//sleep_ms(1000);
