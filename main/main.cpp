@@ -14,12 +14,12 @@ const uint8_t o2Pin = 1; 	//oscillator two pin
 const uint8_t o3Pin = 2; 	//oscillator three pin
 const uint8_t sLOADPin = 4; 	//strumpad load pin
 const uint8_t sCLKPin = 6;	//strumpad clock pin
-const uint8_t kLOADPin = 8;	//keypad load pin
-const uint8_t kCLKPin = 10;	//keypad clock pin
 //use some of the previously skipped pins. They're ok to use, the associated timer is just being utilized.
-const uint8_t kR1Pin = 1;	//keypad row one pin
-const uint8_t kR2Pin = 3;	//keypad row two pin
-const uint8_t kR3Pin = 5;	//keypad row three pin
+const uint8_t kLOADPin = 1;	//keypad load pin
+const uint8_t kCLKPin = 3;	//keypad clock pin
+const uint8_t kR1Pin = 5;	//keypad row one pin
+const uint8_t kR2Pin = 7;	//keypad row two pin
+const uint8_t kR3Pin = 9;	//keypad row three pin
 
 const uint8_t rows = 3;
 const uint8_t columns = 12;
