@@ -1,16 +1,19 @@
+add_subdirectory(oscillator)
+
 # Tell CMake where to find the executable source file
-add_executable(${PROJECT_NAME} 
+add_executable(main
     main.cpp
-	chord.cpp
 	keypad.cpp
+	chord.cpp
+	oscillator/oscillator.cpp
 )
 
 # Create map/bin/hex/uf2 files
-pico_add_extra_outputs(${PROJECT_NAME})
+pico_add_extra_outputs(main)
 
 # Link to pico_stdlib (gpio, time, etc. functions)
-target_link_libraries(${PROJECT_NAME} pico_stdlib hardware_gpio hardware_clocks hardware_pwm hardware_adc)
+target_link_libraries(main pico_stdlib hardware_gpio hardware_clocks hardware_pwm hardware_adc)
 
 # Enable usb output, disable uart output
-pico_enable_stdio_usb(${PROJECT_NAME} 1)
-pico_enable_stdio_uart(${PROJECT_NAME} 0)
+pico_enable_stdio_usb(main 1)
+pico_enable_stdio_uart(main 0)
