@@ -14,7 +14,7 @@
 
 #include "chord.h"
 #include "keypad.h"
-#include "oscillator/oscillator.h"
+#include "oscillator.h"
 
 //all pwm pins with different frequencys or phase offset need to be one pin apart
 const uint8_t o1Pin = 0; 	//oscillator one pin
@@ -35,14 +35,15 @@ const float keypadLoadHz = 60.0f;
 const float keypadClockHz = keypadClockHz * (float)cols;
 const float strumLoadHz = 500.0f;
 
-SOscillator oscs[OSCILLATORS];
+SinWave wave;
+Oscillator oscs[OSCILLATORS];
 
 Chord chord = NoChord();
 
 Keypad activePad;
 Keypad finalPad;
 
-long uptime = 0;
+uint8_t level = 0;
 
 float midiFreq(int midiNum) {
 	return 440.0f*powf(2.0f, ((float)midiNum - 69.0f) / 12.0f);
@@ -50,6 +51,10 @@ float midiFreq(int midiNum) {
 
 void pwm_interrupt_handler() {
     pwm_clear_irq(pwm_gpio_to_slice_num(AUDIO_PIN));
+    pwm_set_gpio_level(AUDIO_PIN, level);
+}
+
+bool tick_oscillators(struct repeating_timer *t) {
 	sink sum { 0.0f };
 	for(int i = 0; i < 3; i++) {	
 		sum += oscs[i].tick(false);
@@ -57,26 +62,21 @@ void pwm_interrupt_handler() {
 	for(int i = 3; i < OSCILLATORS; i++) {	
 		sum += oscs[i].tick(true);
 	}
-	uint8_t level = static_cast<uint16_t>(sum/OSCILLATORS);
-	if(level > 0xFF) level = 0xFF;
-    pwm_set_gpio_level(AUDIO_PIN, level);
-}
-
-bool count(struct repeating_timer *t) {
-	uptime++;
+	level = static_cast<uint8_t>(255*sum/OSCILLATORS);
 	return true;
 }
 
-void updateOsc() {
-	for(int i = 0; i < OSCILLATORS; i++) {
+void set_chord(Chord c) {
+	chord = c;
+	for(int i = 0; i < 3; i++) {
 		float freq = midiFreq(chord[i % 3]);
-		int fscale = 1<<(i/3);
-		oscs[i] = SquareSOSC(freq*(float)fscale);
-		oscs[i].volume = sink(0.0f);
+		oscs[i].set_freq(freq);
 	}
-	oscs[0].volume = sink(0.5f);
-	oscs[1].volume = sink(0.5f);
-	oscs[2].volume = sink(0.5f);
+	for(int i = 3; i < OSCILLATORS; i++) {
+		float freq = midiFreq(chord[i % 3]);
+		int fscale = 1<<((i-3)/3);
+		oscs[i].set_freq(freq*(float)fscale);
+	}
 }
 
 bool tick_keypad(struct repeating_timer *t) {
@@ -100,8 +100,7 @@ bool tick_keypad(struct repeating_timer *t) {
 		
 		finalPad.update(activePad);
 		
-		chord = finalPad.to_chord();
-		updateOsc();
+		set_chord(finalPad.to_chord());
 		
 		printf("\033[2J");	
 		printf("%d %d\r\n", chord.root, chord.type);
@@ -128,9 +127,6 @@ int main(void) {
 	gpio_set_dir(kR1Pin,   GPIO_IN);
 	gpio_set_dir(kR2Pin,   GPIO_IN);
 	gpio_set_dir(kR3Pin,   GPIO_IN);	
-	
-	chord = MajChord(60-12);
-	updateOsc();
 
     set_sys_clock_khz(176000, true); 
     gpio_set_function(AUDIO_PIN, GPIO_FUNC_PWM);
@@ -154,15 +150,22 @@ int main(void) {
 	//8.0f for 11 KHz
     //4.0f for 22 KHz
     //2.0f for 44 KHz etc
-    pwm_config_set_clkdiv(&config, 16.0f); 
-    pwm_config_set_wrap(&config, 250); 
+    pwm_config_set_clkdiv(&config, 8.0f); 
+    pwm_config_set_wrap(&config, 275); 
     pwm_init(audio_pin_slice, &config, true);
 
     pwm_set_gpio_level(AUDIO_PIN, 0);
 	
+	for(int i = 0; i < OSCILLATORS; i++) {
+		oscs[i].set_wave(&wave);
+		oscs[i].volume = sink(0.0f);
+	}
+	
+	struct repeating_timer tim1;
+	add_repeating_timer_us(-static_cast<int32_t>(SAMPLE_PERIOD_MICRO), tick_oscillators, NULL, &tim1);
 	
 	Chord dummyChord[4];
-	int dummyStrumProg[4] = { 5, 7, 9, 12 };
+	int dummyStrumProg[13] = { 4, 11, 2, 7, 3, 0, 10, 5, 8, 9, 12, 6, 1 };
 		
 	dummyChord[0] = Chord::makeChord(60 - 12, MAJOR);
 	dummyChord[1] = Chord::makeChord(64 - 12, MINOR);
@@ -171,12 +174,14 @@ int main(void) {
 	
 	while(1) {
 		for(int i = 0; i < 4; i++) {
-			chord = dummyChord[i];
-			updateOsc();
-			for(int i = 0; i < 4; i++) {
-				oscs[dummyStrumProg[i]+3].volume = sink(1.0f);
-				printf("%d chime %f\r\n", i, oscs[i].get_freq());
-				sleep_ms(250);
+			set_chord(dummyChord[i]);
+			printf("chord %d\r\n", i);
+			for(int n = 0; n < 2; n++) {
+				for(int i = 0; i < 13; i++) {
+					int strumPad = dummyStrumProg[i]+3;
+					oscs[strumPad].volume = sink(1.0f);
+					sleep_ms(100);
+				}
 			}
 			sleep_ms(1000);
 		}

@@ -1,11 +1,9 @@
-add_subdirectory(oscillator)
-
 # Tell CMake where to find the executable source file
 add_executable(main
     main.cpp
 	keypad.cpp
 	chord.cpp
-	oscillator/oscillator.cpp
+	oscillator.cpp
 )
 
 # Create map/bin/hex/uf2 files
