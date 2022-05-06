@@ -17,17 +17,17 @@ sink Wave::get_data(uint32_t pos) {
 
 SquareWave::SquareWave() {
 	for(int i = 0; i < RESOLUTION/2; i++) {
-		data[i] = sink(1.0f);
+		data[i] = sink(-0.5f);
 	}
 	for(int i = RESOLUTION/2; i < RESOLUTION; i++) {
-		data[i] = sink(0.0f);
+		data[i] = sink(0.5f);
 	}
 }
 
 SinWave::SinWave() {
 	for(int i = 0; i < RESOLUTION; i++) {
 		float x = ((float)i/(float)RESOLUTION)*2.0*M_PI;
-		float y = sin(x) + 1.0f;
+		float y = sin(x);
 		data[i] = sink(y);
 	}
 }

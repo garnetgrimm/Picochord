@@ -35,7 +35,7 @@ const float keypadLoadHz = 60.0f;
 const float keypadClockHz = keypadClockHz * (float)cols;
 const float strumLoadHz = 500.0f;
 
-SinWave wave;
+SquareWave wave;
 Oscillator oscs[OSCILLATORS];
 
 Chord chord = NoChord();
@@ -62,7 +62,7 @@ bool tick_oscillators(struct repeating_timer *t) {
 	for(int i = 3; i < OSCILLATORS; i++) {	
 		sum += oscs[i].tick(true);
 	}
-	level = static_cast<uint8_t>(255*sum/OSCILLATORS);
+	level = static_cast<int8_t>((0xFF>>4)*sum) + 0x7F;
 	return true;
 }
 
@@ -167,10 +167,14 @@ int main(void) {
 	Chord dummyChord[4];
 	int dummyStrumProg[13] = { 4, 11, 2, 7, 3, 0, 10, 5, 8, 9, 12, 6, 1 };
 		
-	dummyChord[0] = Chord::makeChord(60 - 12, MAJOR);
-	dummyChord[1] = Chord::makeChord(64 - 12, MINOR);
-	dummyChord[2] = Chord::makeChord(65 - 12, MAJOR);
-	dummyChord[3] = Chord::makeChord(62 - 12, MINOR);
+	dummyChord[0] = Chord::makeChord(60, MAJOR);
+	dummyChord[1] = Chord::makeChord(64, MINOR);
+	dummyChord[2] = Chord::makeChord(65, MAJOR);
+	dummyChord[3] = Chord::makeChord(62, MINOR);
+	
+	oscs[0].volume = sink(1.0f);
+	oscs[1].volume = sink(1.0f);
+	oscs[2].volume = sink(1.0f);
 	
 	while(1) {
 		for(int i = 0; i < 4; i++) {
@@ -180,10 +184,10 @@ int main(void) {
 				for(int i = 0; i < 13; i++) {
 					int strumPad = dummyStrumProg[i]+3;
 					oscs[strumPad].volume = sink(1.0f);
-					sleep_ms(100);
+					sleep_ms(500);
 				}
 			}
-			sleep_ms(1000);
+			sleep_ms(5000);
 		}
 	}
 	
