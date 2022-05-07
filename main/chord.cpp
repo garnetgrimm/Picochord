@@ -39,7 +39,7 @@ NoChord::NoChord() : Chord() {
 }
 
 //001
-SevChord::SevChord(int root) : Chord(root, BLANK) {
+SevChord::SevChord(int root) : Chord(root, SEVEN) {
 	notes[0] = root + 0;
 	notes[1] = root + 4;
 	notes[2] = root + 9;

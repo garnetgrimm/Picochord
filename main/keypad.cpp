@@ -51,14 +51,12 @@ Chord Keypad::to_chord() {
 	}
 	
 	//get midi from note pressed
-	int root = noteMap[col];
-	int chordType = 0;
+	uint8_t root = noteMap[col];
+	uint8_t chordType = 0;
 	
 	//determine chord pressed for active note
 	for(int row = 0; row < rows; row++) {
-		if(get_keypad(row, col)) {
-			chordType |= (1 << row);
-		}
+		chordType |= (get_keypad(row, col) << (rows-1-row));
 	}
 	
 	return Chord::makeChord(root, static_cast<ChordType>(chordType));

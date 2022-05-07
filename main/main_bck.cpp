@@ -16,14 +16,18 @@
 #include "keypad.h"
 #include "oscillator.h"
 
-const uint8_t sLOADPin = 7; 	//strumpad load pin
-const uint8_t sCLKPin = 9;	//strumpad clock pin
+//all pwm pins with different frequencys or phase offset need to be one pin apart
+const uint8_t o1Pin = 0; 	//oscillator one pin
+const uint8_t o2Pin = 1; 	//oscillator two pin
+const uint8_t o3Pin = 2; 	//oscillator three pin
+const uint8_t sLOADPin = 4; 	//strumpad load pin
+const uint8_t sCLKPin = 6;	//strumpad clock pin
 //use some of the previously skipped pins. They're ok to use, the associated timer is just being utilized.
 const uint8_t kLOADPin = 1;	//keypad load pin
-const uint8_t kCLKPin = 0;	//keypad clock pin
-const uint8_t kR1Pin = 3;	//keypad row one pin
-const uint8_t kR2Pin = 4;	//keypad row two pin
-const uint8_t kR3Pin = 5;	//keypad row three pin
+const uint8_t kCLKPin = 3;	//keypad clock pin
+const uint8_t kR1Pin = 5;	//keypad row one pin
+const uint8_t kR2Pin = 7;	//keypad row two pin
+const uint8_t kR3Pin = 9;	//keypad row three pin
 
 uint8_t current_col = 0;
 
@@ -41,8 +45,6 @@ Keypad finalPad;
 
 uint8_t level = 0;
 
-bool mute_chord = true;
-
 float midiFreq(int midiNum) {
 	return 440.0f*powf(2.0f, ((float)midiNum - 69.0f) / 12.0f);
 }
@@ -54,10 +56,8 @@ void pwm_interrupt_handler() {
 
 bool tick_oscillators(struct repeating_timer *t) {
 	sink sum { 0.0f };
-	if(!mute_chord) {
-		for(int i = 0; i < 3; i++) {	
-			sum += oscs[i].tick(false);
-		}
+	for(int i = 0; i < 3; i++) {	
+		sum += oscs[i].tick(false);
 	}
 	for(int i = 3; i < OSCILLATORS; i++) {	
 		sum += oscs[i].tick(true);
@@ -68,22 +68,14 @@ bool tick_oscillators(struct repeating_timer *t) {
 
 void set_chord(Chord c) {
 	chord = c;
-	if(chord.type == BLANK) {
-		mute_chord = true;
-		for(int i = 0; i < 3; i++) {
-			oscs[i].set_freq(440);
-		}
-	} else {
-		mute_chord = false;
-		for(int i = 0; i < 3; i++) {
-			float freq = midiFreq(chord[i % 3]);
-			oscs[i].set_freq(freq);
-		}
-		for(int i = 3; i < OSCILLATORS; i++) {
-			float freq = midiFreq(chord[i % 3]);
-			int fscale = 1<<((i-3)/3);
-			oscs[i].set_freq(freq*(float)fscale);
-		}
+	for(int i = 0; i < 3; i++) {
+		float freq = midiFreq(chord[i % 3]);
+		oscs[i].set_freq(freq);
+	}
+	for(int i = 3; i < OSCILLATORS; i++) {
+		float freq = midiFreq(chord[i % 3]);
+		int fscale = 1<<((i-3)/3);
+		oscs[i].set_freq(freq*(float)fscale);
 	}
 }
 
@@ -102,25 +94,26 @@ bool tick_keypad(struct repeating_timer *t) {
 	
 	gpio_put(kCLKPin, !clkStat);
 	
-	if(current_col >= cols) {
+	if(current_col > cols) {
 		current_col = 0;
 		gpio_put(kLOADPin, true);
 		
-		finalPad.update(activePad);	
+		finalPad.update(activePad);
 		
-		Chord detChord = finalPad.to_chord();		
-		if(detChord.type != chord.type || detChord.root != chord.root) {
-			set_chord(detChord);
-		};
+		set_chord(finalPad.to_chord());
+		
+		printf("\033[2J");	
+		printf("%d %d\r\n", chord.root, chord.type);
+		finalPad.print();
 	}
 	
 	return true;
 }
 
+
 int main(void) {
 	
     stdio_init_all();
-	set_chord(MajChord(noteMap[0]));
 	
 	//keypad control signals
 	gpio_init(kLOADPin);
@@ -171,9 +164,6 @@ int main(void) {
 	struct repeating_timer tim1;
 	add_repeating_timer_us(-static_cast<int32_t>(SAMPLE_PERIOD_MICRO), tick_oscillators, NULL, &tim1);
 	
-	struct repeating_timer tim2;
-	add_repeating_timer_ms(-1, tick_keypad, NULL, &tim2);
-	
 	Chord dummyChord[4];
 	int dummyStrumProg[13] = { 4, 11, 2, 7, 3, 0, 10, 5, 8, 9, 12, 6, 1 };
 		
@@ -187,16 +177,20 @@ int main(void) {
 	oscs[2].volume = sink(1.0f);
 	
 	while(1) {
-		for(int i = 0; i < 13; i++) {
-			int strumPad = dummyStrumProg[i]+3;
-			oscs[strumPad].volume = sink(1.0f);
-			
-			printf("\033[2J");	
-			printf("%d %d\r\n", chord.root, chord.type);
-			finalPad.print();
-			
-			sleep_ms(500);
+		for(int i = 0; i < 4; i++) {
+			set_chord(dummyChord[i]);
+			printf("chord %d\r\n", i);
+			for(int n = 0; n < 2; n++) {
+				for(int i = 0; i < 13; i++) {
+					int strumPad = dummyStrumProg[i]+3;
+					oscs[strumPad].volume = sink(1.0f);
+					sleep_ms(500);
+				}
+			}
+			sleep_ms(5000);
 		}
 	}
 	
+	//struct repeating_timer timer;
+	//add_repeating_timer_us(-1000, tick_keypad, NULL, &timer);
 }
