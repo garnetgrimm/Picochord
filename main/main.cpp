@@ -15,17 +15,20 @@
 #include "chord.h"
 #include "keypad.h"
 #include "oscillator.h"
+#include "strumpad.h"
 
-const uint8_t sLOADPin = 7; 	//strumpad load pin
-const uint8_t sCLKPin = 9;	//strumpad clock pin
+const uint8_t sLOADPin = 15;  //strumpad load pin
+const uint8_t sCLKPin = 14;	 //strumpad clock pin
+const uint8_t sINPin = 13;	 //strumpad input pin
 //use some of the previously skipped pins. They're ok to use, the associated timer is just being utilized.
-const uint8_t kLOADPin = 1;	//keypad load pin
-const uint8_t kCLKPin = 0;	//keypad clock pin
-const uint8_t kR1Pin = 3;	//keypad row one pin
-const uint8_t kR2Pin = 4;	//keypad row two pin
-const uint8_t kR3Pin = 5;	//keypad row three pin
+const uint8_t kLOADPin = 20; //keypad load pin
+const uint8_t kCLKPin = 21;	 //keypad clock pin
+const uint8_t kR1Pin = 27;	 //keypad row one pin
+const uint8_t kR2Pin = 26;	 //keypad row two pin
+const uint8_t kR3Pin = 22;	 //keypad row three pin
 
 uint8_t current_col = 0;
+uint8_t current_pad = 0;
 
 const float keypadLoadHz = 60.0f;
 const float keypadClockHz = keypadClockHz * (float)cols;
@@ -39,9 +42,13 @@ Chord chord = NoChord();
 Keypad activePad;
 Keypad finalPad;
 
+Strumpad strumPad;
+
 uint8_t level = 0;
 
 bool mute_chord = true;
+
+uint64_t dbg = 0;
 
 float midiFreq(int midiNum) {
 	return 440.0f*powf(2.0f, ((float)midiNum - 69.0f) / 12.0f);
@@ -59,7 +66,7 @@ bool tick_oscillators(struct repeating_timer *t) {
 			sum += oscs[i].tick(false);
 		}
 	}
-	for(int i = 3; i < OSCILLATORS; i++) {	
+	for(int i = 3; i < 11; i++) {	
 		sum += oscs[i].tick(true);
 	}
 	level = static_cast<int8_t>((0xFF>>4)*sum) + 0x7F;
@@ -87,8 +94,36 @@ void set_chord(Chord c) {
 	}
 }
 
-bool tick_keypad(struct repeating_timer *t) {
-	
+void tick_strumpad(void) {
+	if(!gpio_get_out_level(sCLKPin)) {
+		
+		bool pad_on = !gpio_get(sINPin);
+		strumPad.set_strumpad(current_pad, pad_on);
+		if(pad_on) {
+			oscs[current_pad + 3].volume = sink(1.0f);
+		}
+		
+		current_pad++;
+		if(current_pad > 8) {
+			current_pad = 0;
+			gpio_put(sCLKPin, true);
+			//sleep_ms(1);
+			gpio_put(sCLKPin, false); //this program depends on the fact that the arduino is slow (4-5us for this call)
+			//sleep_us(4);
+			gpio_put(sLOADPin, false); //and this
+			//sleep_us(4);
+			gpio_put(sLOADPin, true); //and this
+			//sleep_us(4);
+			gpio_put(sCLKPin, false);
+		} else {
+			gpio_put(sCLKPin, true);
+		}
+	} else {
+		gpio_put(sCLKPin, false);
+	}
+}
+
+void tick_keypad(void) {
 	bool clkStat = gpio_get_out_level(kCLKPin);	
 	
 	if(clkStat) {
@@ -113,7 +148,11 @@ bool tick_keypad(struct repeating_timer *t) {
 			set_chord(detChord);
 		};
 	}
-	
+}
+
+bool input_ISR(struct repeating_timer *t) {
+	tick_keypad();
+	tick_strumpad();
 	return true;
 }
 
@@ -121,6 +160,15 @@ int main(void) {
 	
     stdio_init_all();
 	set_chord(MajChord(noteMap[0]));
+	
+	//strumpad control signals
+	gpio_init(sLOADPin);
+	gpio_init(sCLKPin);
+	gpio_init(sINPin);
+
+	gpio_set_dir(sLOADPin, GPIO_OUT);
+	gpio_set_dir(sCLKPin, GPIO_OUT);
+	gpio_set_dir(sINPin, GPIO_IN);
 	
 	//keypad control signals
 	gpio_init(kLOADPin);
@@ -172,7 +220,7 @@ int main(void) {
 	add_repeating_timer_us(-static_cast<int32_t>(SAMPLE_PERIOD_MICRO), tick_oscillators, NULL, &tim1);
 	
 	struct repeating_timer tim2;
-	add_repeating_timer_ms(-1, tick_keypad, NULL, &tim2);
+	add_repeating_timer_us(250, input_ISR, NULL, &tim2);
 	
 	Chord dummyChord[4];
 	int dummyStrumProg[13] = { 4, 11, 2, 7, 3, 0, 10, 5, 8, 9, 12, 6, 1 };
@@ -182,11 +230,18 @@ int main(void) {
 	dummyChord[2] = Chord::makeChord(65, MAJOR);
 	dummyChord[3] = Chord::makeChord(62, MINOR);
 	
-	oscs[0].volume = sink(1.0f);
-	oscs[1].volume = sink(1.0f);
-	oscs[2].volume = sink(1.0f);
+	oscs[0].volume = sink(0.5f);
+	oscs[1].volume = sink(0.5f);
+	oscs[2].volume = sink(0.5f);
+	
+	mute_chord = true;
 	
 	while(1) {
+		printf("\033[2J");
+		finalPad.print();
+		strumPad.print();
+		sleep_ms(100);
+		/*
 		for(int i = 0; i < 13; i++) {
 			int strumPad = dummyStrumProg[i]+3;
 			oscs[strumPad].volume = sink(1.0f);
@@ -197,6 +252,7 @@ int main(void) {
 			
 			sleep_ms(500);
 		}
+		*/
 	}
 	
 }

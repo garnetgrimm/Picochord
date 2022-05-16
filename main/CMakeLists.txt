@@ -2,6 +2,7 @@
 add_executable(main
     main.cpp
 	keypad.cpp
+	strumpad.cpp
 	chord.cpp
 	oscillator.cpp
 )

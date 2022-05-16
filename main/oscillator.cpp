@@ -1,7 +1,7 @@
 #include "oscillator.h"
 #include <stdio.h>
 
-float decay = 0.5f;
+float decay = 1.0f;
 float maxDecay = 1.0f;
 
 
