@@ -5,16 +5,20 @@
 #include "hardware/clocks.h"
 #include "hardware/pwm.h"
 #include "hardware/adc.h"
+#include "hardware/i2c.h"
 #include "hardware/irq.h"  // interrupts
 #include "hardware/sync.h" // wait for interrupt 
  
-// Audio PIN is to match some of the design guide shields. 
-#define OSCILLATORS 16
-
 #include "chord.h"
 #include "keypad.h"
 #include "oscillator.h"
 #include "strumpad.h"
+
+// Audio PIN is to match some of the design guide shields. 
+#define OSCILLATORS 16
+
+//define cap1188 i2c address
+#define ADDR _u(0x29)
 
 const uint8_t audioPin = 10;
 const uint8_t sLOADPin = 15;  //strumpad load pin
@@ -51,9 +55,8 @@ uint8_t level = 0;
 
 bool mute_chord = true;
 
-uint32_t strum_load_cnt = 0;
-uint32_t strum_load_max = 15;
-uint32_t strum_tick_time = 250;
+uint32_t strum_tick_time = 4096;
+uint32_t key_tick_time = 250;
 
 bool blinky = false;
 
@@ -101,41 +104,29 @@ void set_chord(Chord c) {
 	}
 }
 
-void tick_strumpad(void) {
-	if(strum_load_cnt == 10) {
-		gpio_put(sLOADPin, false);
-		gpio_put(sCLKPin, false);
-		gpio_put(sLOADPin, true);
+bool tick_strumpad(struct repeating_timer *t) {
+	uint8_t buf[2];
+	uint8_t rxdata;
+	buf[0] = 0x00;
+	buf[1] = 0x01;
+	i2c_write_blocking(i2c_default, ADDR, buf, 2, false);
+	buf[0] = 0x00;
+	buf[1] = 0x00;
+	i2c_write_blocking(i2c_default, ADDR, buf, 2, false);
+	//read from register at 0x03
+	//(IMPORTANT: HAND OFF CONTROL after (last param true))
+	rxdata = 0x03;
+	i2c_write_blocking(i2c_default, ADDR, &rxdata, 1, true); 	
+	//read 8 bits
+	i2c_read_blocking(i2c_default, ADDR, &rxdata, 1, false); 
+	for(int i = 0; i < 8; i++) {
+		bool pad_on = ((rxdata & (1 << i)) != 0);
+		oscs[i + 3].volume = sink(1.0f);
 	}
-	
-	if(strum_load_cnt < strum_load_max)  {
-		strum_load_cnt++;
-		return;
-	}
-	
-	if(!gpio_get_out_level(sCLKPin)) {
-		
-		bool pad_on = gpio_get(sINPin) && (current_pad == 7);
-		strumPad.set_strumpad(current_pad, pad_on);
-		if(pad_on) {
-			oscs[current_pad + 3].volume = sink(1.0f);
-		}
-		
-		current_pad++;
-		if(current_pad > 8) {
-			current_pad = 0;
-			gpio_put(sCLKPin, true);
-			strum_load_cnt = 0;
-			return;
-		} else {
-			gpio_put(sCLKPin, true);
-		}
-	} else {
-		gpio_put(sCLKPin, false);
-	}
+	return true;
 }
 
-void tick_keypad(void) {
+bool tick_keypad(struct repeating_timer *t) {
 	bool clkStat = gpio_get_out_level(kCLKPin);	
 	
 	if(clkStat) {
@@ -163,12 +154,34 @@ void tick_keypad(void) {
 			set_chord(detChord);
 		};
 	}
+	return true;
 }
 
-bool input_ISR(struct repeating_timer *t) {
-	tick_keypad();
-	tick_strumpad();
-	return true;
+void init_cap1188(void) {
+	//Init device
+	uint8_t buf[2];
+	buf[0] = 0x00;
+	buf[1] = 0x00;
+	i2c_write_blocking(i2c_default, ADDR, buf, 2, false);
+	//Multiple Touch
+	buf[0] = 0x2A;
+	buf[1] = 0x0C;
+	i2c_write_blocking(i2c_default, ADDR, buf, 2, false);
+	//LED link
+	buf[0] = 0x72;
+	buf[1] = 0xff;
+	i2c_write_blocking(i2c_default, ADDR, buf, 2, false);
+	//sensitivity
+	buf[0] = 0x1F;
+	buf[1] = 0x4f;
+	i2c_write_blocking(i2c_default, ADDR, buf, 2, false);
+	//(optional) setting LED mode
+	buf[0] = 0x81;
+	buf[1] = 0x00;
+	i2c_write_blocking(i2c_default, ADDR, buf, 2, false);
+	buf[0] = 0x82;
+	buf[1] = 0x00;
+	i2c_write_blocking(i2c_default, ADDR, buf, 2, false);	
 }
 
 int main(void) {
@@ -208,6 +221,14 @@ int main(void) {
 	gpio_set_dir(kR5Pin,   GPIO_IN);
 	gpio_set_dir(kR6Pin,   GPIO_IN);	
 
+	i2c_init(i2c_default, 400 * 1000); //clock speed
+	gpio_set_function(PICO_DEFAULT_I2C_SDA_PIN, GPIO_FUNC_I2C);
+	gpio_set_function(PICO_DEFAULT_I2C_SCL_PIN, GPIO_FUNC_I2C);
+	gpio_pull_up(PICO_DEFAULT_I2C_SDA_PIN);
+	gpio_pull_up(PICO_DEFAULT_I2C_SCL_PIN);
+	
+	init_cap1188();
+
     set_sys_clock_khz(176000, true); 
     gpio_set_function(audioPin, GPIO_FUNC_PWM);
 
@@ -245,8 +266,11 @@ int main(void) {
 	add_repeating_timer_us(-static_cast<int32_t>(SAMPLE_PERIOD_MICRO), tick_oscillators, NULL, &tim1);
 	
 	struct repeating_timer tim2;
-	add_repeating_timer_us(strum_tick_time, input_ISR, NULL, &tim2);
+	add_repeating_timer_us(key_tick_time, tick_keypad, NULL, &tim2);
 	
+	struct repeating_timer tim3;
+	add_repeating_timer_us(strum_tick_time, tick_strumpad, NULL, &tim3);
+
 	Chord dummyChord[4];
 	int dummyStrumProg[13] = { 4, 11, 2, 7, 3, 0, 10, 5, 8, 9, 12, 6, 1 };
 		
