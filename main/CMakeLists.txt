@@ -5,13 +5,14 @@ add_executable(main
 	strumpad.cpp
 	chord.cpp
 	oscillator.cpp
+	cap1188.cpp
 )
 
 # Create map/bin/hex/uf2 files
 pico_add_extra_outputs(main)
 
 # Link to pico_stdlib (gpio, time, etc. functions)
-target_link_libraries(main pico_stdlib hardware_i2c hardware_gpio hardware_clocks hardware_pwm hardware_adc)
+target_link_libraries(main pico_stdlib hardware_spi hardware_gpio hardware_clocks hardware_pwm hardware_adc)
 
 # Enable usb output, disable uart output
 pico_enable_stdio_usb(main 1)

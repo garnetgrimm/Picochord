@@ -5,7 +5,6 @@
 #include "hardware/clocks.h"
 #include "hardware/pwm.h"
 #include "hardware/adc.h"
-#include "hardware/i2c.h"
 #include "hardware/irq.h"  // interrupts
 #include "hardware/sync.h" // wait for interrupt 
  
@@ -13,12 +12,10 @@
 #include "keypad.h"
 #include "oscillator.h"
 #include "strumpad.h"
+#include "cap1188.h"
 
 // Audio PIN is to match some of the design guide shields. 
 #define OSCILLATORS 16
-
-//define cap1188 i2c address
-#define ADDR _u(0x29)
 
 const uint8_t audioPin = 10;
 const uint8_t sLOADPin = 15;  //strumpad load pin
@@ -33,6 +30,8 @@ const uint8_t kR3Pin = 22;	 //keypad row three pin
 const uint8_t kR4Pin = 16;	 //keypad row one pin
 const uint8_t kR5Pin = 18;	 //keypad row two pin
 const uint8_t kR6Pin = 19;	 //keypad row three pin
+
+const uint8_t capRPin = 8;
 
 uint8_t current_col = 0;
 uint8_t current_pad = 0;
@@ -105,20 +104,7 @@ void set_chord(Chord c) {
 }
 
 bool tick_strumpad(struct repeating_timer *t) {
-	uint8_t buf[2];
-	uint8_t rxdata;
-	buf[0] = 0x00;
-	buf[1] = 0x01;
-	i2c_write_blocking(i2c_default, ADDR, buf, 2, false);
-	buf[0] = 0x00;
-	buf[1] = 0x00;
-	i2c_write_blocking(i2c_default, ADDR, buf, 2, false);
-	//read from register at 0x03
-	//(IMPORTANT: HAND OFF CONTROL after (last param true))
-	rxdata = 0x03;
-	i2c_write_blocking(i2c_default, ADDR, &rxdata, 1, true); 	
-	//read 8 bits
-	i2c_read_blocking(i2c_default, ADDR, &rxdata, 1, false); 
+	uint8_t rxdata = CAP1188::touched();
 	for(int i = 0; i < 8; i++) {
 		bool pad_on = ((rxdata & (1 << i)) != 0);
 		oscs[i + 3].volume = sink(1.0f);
@@ -155,33 +141,6 @@ bool tick_keypad(struct repeating_timer *t) {
 		};
 	}
 	return true;
-}
-
-void init_cap1188(void) {
-	//Init device
-	uint8_t buf[2];
-	buf[0] = 0x00;
-	buf[1] = 0x00;
-	i2c_write_blocking(i2c_default, ADDR, buf, 2, false);
-	//Multiple Touch
-	buf[0] = 0x2A;
-	buf[1] = 0x0C;
-	i2c_write_blocking(i2c_default, ADDR, buf, 2, false);
-	//LED link
-	buf[0] = 0x72;
-	buf[1] = 0xff;
-	i2c_write_blocking(i2c_default, ADDR, buf, 2, false);
-	//sensitivity
-	buf[0] = 0x1F;
-	buf[1] = 0x4f;
-	i2c_write_blocking(i2c_default, ADDR, buf, 2, false);
-	//(optional) setting LED mode
-	buf[0] = 0x81;
-	buf[1] = 0x00;
-	i2c_write_blocking(i2c_default, ADDR, buf, 2, false);
-	buf[0] = 0x82;
-	buf[1] = 0x00;
-	i2c_write_blocking(i2c_default, ADDR, buf, 2, false);	
 }
 
 int main(void) {
@@ -221,13 +180,7 @@ int main(void) {
 	gpio_set_dir(kR5Pin,   GPIO_IN);
 	gpio_set_dir(kR6Pin,   GPIO_IN);	
 
-	i2c_init(i2c_default, 400 * 1000); //clock speed
-	gpio_set_function(PICO_DEFAULT_I2C_SDA_PIN, GPIO_FUNC_I2C);
-	gpio_set_function(PICO_DEFAULT_I2C_SCL_PIN, GPIO_FUNC_I2C);
-	gpio_pull_up(PICO_DEFAULT_I2C_SDA_PIN);
-	gpio_pull_up(PICO_DEFAULT_I2C_SCL_PIN);
-	
-	init_cap1188();
+	CAP1188::init(capRPin);
 
     set_sys_clock_khz(176000, true); 
     gpio_set_function(audioPin, GPIO_FUNC_PWM);
