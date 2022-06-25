@@ -62,7 +62,7 @@
  */
 class CAP1188 {
 public:
-  static bool init(int8_t resetpin);
+  static bool init(void);
   static uint8_t readRegister(uint8_t reg);
   static void writeRegister(uint8_t reg, uint8_t value);
   static uint8_t touched();

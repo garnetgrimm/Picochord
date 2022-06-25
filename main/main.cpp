@@ -31,8 +31,6 @@ const uint8_t kR4Pin = 16;	 //keypad row one pin
 const uint8_t kR5Pin = 18;	 //keypad row two pin
 const uint8_t kR6Pin = 19;	 //keypad row three pin
 
-const uint8_t capRPin = 8;
-
 uint8_t current_col = 0;
 uint8_t current_pad = 0;
 
@@ -180,7 +178,7 @@ int main(void) {
 	gpio_set_dir(kR5Pin,   GPIO_IN);
 	gpio_set_dir(kR6Pin,   GPIO_IN);	
 
-	CAP1188::init(capRPin);
+	CAP1188::init();
 
     set_sys_clock_khz(176000, true); 
     gpio_set_function(audioPin, GPIO_FUNC_PWM);

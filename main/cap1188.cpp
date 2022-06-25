@@ -1,9 +1,12 @@
 #include "cap1188.h"
 #include <cstdio>
 
-static int8_t _resetpin;
+static const uint8_t spiRxPin = 0;
+static const uint8_t spiCsPin = 1;
+static const uint8_t spiClkPin = 2;
+static const uint8_t spiTxPin = 3;
+static const uint8_t spiResetPin = 4;
 
-#ifdef PICO_DEFAULT_SPI_CSN_PIN
 static inline void cs_select() {
     asm volatile("nop \n nop \n nop");
     gpio_put(PICO_DEFAULT_SPI_CSN_PIN, 0);  // Active low
@@ -15,30 +18,28 @@ static inline void cs_deselect() {
     gpio_put(PICO_DEFAULT_SPI_CSN_PIN, 1);
     asm volatile("nop \n nop \n nop");
 }
-#endif
 
-bool CAP1188::init(int8_t resetpin) {
-  _resetpin = resetpin;
+bool CAP1188::init(void) {
   
   //spi_dev = new Adafruit_SPIDevice(cspin, clkpin, misopin, mosipin, 2000000);
   
-  spi_init(spi_default, 2000000);
+  spi_init(spi0, 2000000);
   
-  gpio_set_function(PICO_DEFAULT_SPI_RX_PIN, GPIO_FUNC_SPI);
-  gpio_set_function(PICO_DEFAULT_SPI_SCK_PIN, GPIO_FUNC_SPI);
-  gpio_set_function(PICO_DEFAULT_SPI_TX_PIN, GPIO_FUNC_SPI);
+  gpio_set_function(spiRxPin, GPIO_FUNC_SPI);
+  gpio_set_function(spiClkPin, GPIO_FUNC_SPI);
+  gpio_set_function(spiTxPin, GPIO_FUNC_SPI);
   
-  gpio_init(PICO_DEFAULT_SPI_CSN_PIN);
-  gpio_set_dir(PICO_DEFAULT_SPI_CSN_PIN, GPIO_OUT);
+  gpio_init(spiCsPin);
+  gpio_set_dir(spiCsPin, GPIO_OUT);
   cs_deselect();
 
-  gpio_init(_resetpin);
-  gpio_set_dir(_resetpin, GPIO_OUT);
-  gpio_put(_resetpin, 0);
+  gpio_init(spiResetPin);
+  gpio_set_dir(spiResetPin, GPIO_OUT);
+  gpio_put(spiResetPin, 0);
   sleep_ms(100);
-  gpio_put(_resetpin, 1);
+  gpio_put(spiResetPin, 1);
   sleep_ms(100);
-  gpio_put(_resetpin, 0);
+  gpio_put(spiResetPin, 0);
   sleep_ms(100);
 
   readRegister(CAP1188_PRODID);
